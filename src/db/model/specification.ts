@@ -1,31 +1,49 @@
-import { model, Schema, Document } from "mongoose";
+import { model, Schema, Document, Types } from "mongoose";
 import { ISpecification } from "study-tracker-lib/dist/specificationModel";
 
 export type ISpecificationDoc = Document & ISpecification;
 
-const SpecificationSubSectionSchema: Schema = new Schema({
-  title: {
-    type: String,
+const SpecificationSubSectionSchema: Schema = new Schema(
+  {
+    id: {
+      type: String,
+    },
+    title: {
+      type: String,
+    },
+    requirements: [String],
   },
-  requirements: [String],
-});
+  { _id: false }
+);
 
-const SpecificationSectionSchema: Schema = new Schema({
-  title: {
-    type: String,
+const SpecificationSectionSchema: Schema = new Schema(
+  {
+    id: {
+      type: String,
+    },
+    title: {
+      type: String,
+    },
+    description: {
+      type: String,
+    },
+    subsections: [SpecificationSubSectionSchema],
   },
-  description: {
-    type: String,
-  },
-  subsections: [SpecificationSubSectionSchema],
-});
+  { _id: false }
+);
 
-const SpecificationComponentSchema: Schema = new Schema({
-  name: {
-    type: String,
+const SpecificationComponentSchema: Schema = new Schema(
+  {
+    id: {
+      type: String,
+    },
+    name: {
+      type: String,
+    },
+    sections: [SpecificationSectionSchema],
   },
-  sections: [SpecificationSectionSchema],
-});
+  { _id: false }
+);
 
 const SpecificationSchema: Schema = new Schema({
   name: {

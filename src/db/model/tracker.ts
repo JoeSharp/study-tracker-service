@@ -10,13 +10,13 @@ const RequirementTrackerSchema: Schema = new Schema({
     type: Types.ObjectId,
   },
   componentId: {
-    type: Types.ObjectId,
+    type: String,
   },
   sectionId: {
-    type: Types.ObjectId,
+    type: String,
   },
-  subSectionId: {
-    type: Types.ObjectId,
+  subsectionId: {
+    type: String,
   },
   requirementIndex: {
     type: Number,

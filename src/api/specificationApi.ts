@@ -1,5 +1,5 @@
-import * as logger from "winston";
-import * as _ from "lodash";
+import logger from "winston";
+import _ from "lodash";
 
 import { Specification } from "../db/model/specification";
 import checkPathId from "../middleware/checkPathId";

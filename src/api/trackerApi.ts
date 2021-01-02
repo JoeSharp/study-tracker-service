@@ -1,19 +1,19 @@
-import * as logger from "winston";
-import * as _ from "lodash";
-import { IRequirementTracker } from "study-tracker-lib/dist/trackerModel";
+import logger from "winston";
+import _ from "lodash";
 
 import { SpecificationTracker, RequirementTracker } from "../db/model/tracker";
 import checkPathId from "../middleware/checkPathId";
 import { RestApi } from "./types";
 
 const RESOURCE_URL = "/tracker";
-const RESOURCE_WITH_SPECIFICATION_ID = `${RESOURCE_URL}/forSpec/:specificationId`;
+const RESOURCE_WITH_SPECIFICATION_ID = `${RESOURCE_URL}/:id`;
+const RESOURCE_WITH_REQUIREMENT_ID = `${RESOURCE_URL}/:id/:componentId/:sectionId/:subsectionId/:requirementIndex`;
 
 const api: RestApi = ({ app }) => {
   // Get a specific tracker
   app.get(RESOURCE_WITH_SPECIFICATION_ID, checkPathId, async (req, res) => {
     try {
-      const specificationId = req.params.specificationId;
+      const specificationId = req.params.id;
 
       const found = await SpecificationTracker.findOne({ specificationId });
 
@@ -32,7 +32,9 @@ const api: RestApi = ({ app }) => {
   // Create a tracker, for a spec
   app.post(RESOURCE_WITH_SPECIFICATION_ID, checkPathId, async (req, res) => {
     try {
-      const specificationId = req.params.specificationId;
+      const specificationId = req.params.id;
+
+      logger.info(`Posting new Tracker for Spec ${specificationId}`);
 
       const created = await SpecificationTracker.create({
         specificationId,
@@ -45,26 +47,21 @@ const api: RestApi = ({ app }) => {
     }
   });
 
-  app.put(RESOURCE_WITH_SPECIFICATION_ID, checkPathId, async (req, res) => {
+  app.put(RESOURCE_WITH_REQUIREMENT_ID, checkPathId, async (req, res) => {
     try {
-      const specificationId = req.params.specificationId;
-
       const {
+        id: specificationId,
         componentId,
         sectionId,
         subsectionId,
         requirementIndex,
-        confidence,
-      } = _.pick(req.body, [
-        "componentId",
-        "sectionId",
-        "subsectionId",
-        "requirementIndex",
-        "confidence",
-      ]);
+      } = req.params;
+      const { confidence } = _.pick(req.body, ["confidence"]);
+
       logger.info(
-        `Updating tracker in spec ${specificationId} with ${JSON.stringify(
+        `Updating tracker  ${JSON.stringify(
           {
+            specificationId,
             componentId,
             sectionId,
             subsectionId,
@@ -76,23 +73,23 @@ const api: RestApi = ({ app }) => {
         )}`
       );
 
-      const updated = await RequirementTracker.findOneAndReplace(
+      const updated = await RequirementTracker.findOneAndUpdate(
         {
           specificationId,
           componentId,
           sectionId,
           subsectionId,
-          requirementIndex,
+          requirementIndex: parseInt(requirementIndex, 10),
         },
         {
           specificationId,
           componentId,
           sectionId,
           subsectionId,
-          requirementIndex,
-          confidence,
+          requirementIndex: parseInt(requirementIndex, 10),
+          confidence: parseInt(confidence, 10),
         },
-        {}
+        { upsert: true }
       );
 
       if (!updated) {
