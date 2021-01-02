@@ -40,7 +40,7 @@ const api: RestApi = ({ app }) => {
 
   app.post(RESOURCE_URL, async (req, res) => {
     try {
-      logger.info("Posting New Spec", req.body);
+      logger.info("Posting New Specification", req.body);
       const created = new Specification(req.body);
       created.save();
       res.send(created);
