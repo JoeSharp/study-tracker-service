@@ -2,7 +2,7 @@ import { model, Schema, Types, Document } from "mongoose";
 import {
   ISpecificationTracker,
   IRequirementTracker,
-  Confidence,
+  ConfidenceOptions,
 } from "study-tracker-lib/dist/trackerModel";
 
 const RequirementTrackerSchema: Schema = new Schema({
@@ -22,14 +22,8 @@ const RequirementTrackerSchema: Schema = new Schema({
     type: Number,
   },
   confidence: {
-    type: Number,
-    enum: [
-      Confidence.notCovered,
-      Confidence.low,
-      Confidence.medium,
-      Confidence.high,
-      Confidence.veryHigh,
-    ],
+    type: String,
+    enum: ConfidenceOptions,
   },
 });
 

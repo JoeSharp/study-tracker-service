@@ -2,11 +2,13 @@ import logger from "winston";
 import _ from "lodash";
 
 import { Specification } from "../db/model/specification";
-import checkPathId from "../middleware/checkPathId";
+import generateCheckPathId from "../middleware/checkPathId";
 import { RestApi } from "./types";
 
 const RESOURCE_URL = "/specification";
-const RESOURCE_WITH_ID = `${RESOURCE_URL}/:id`;
+const RESOURCE_WITH_ID = `${RESOURCE_URL}/:specificationId`;
+
+const checkSpecificationId = generateCheckPathId(["specificationId"]);
 
 const api: RestApi = ({ app }) => {
   app.get(RESOURCE_URL, async (req, res) => {
@@ -20,7 +22,7 @@ const api: RestApi = ({ app }) => {
     }
   });
 
-  app.get(RESOURCE_WITH_ID, checkPathId, async (req, res) => {
+  app.get(RESOURCE_WITH_ID, checkSpecificationId, async (req, res) => {
     try {
       const _id = req.params.id;
 
@@ -51,7 +53,7 @@ const api: RestApi = ({ app }) => {
     }
   });
 
-  app.put(RESOURCE_WITH_ID, checkPathId, async (req, res) => {
+  app.put(RESOURCE_WITH_ID, checkSpecificationId, async (req, res) => {
     try {
       const _id = req.params.id;
 
@@ -78,7 +80,7 @@ const api: RestApi = ({ app }) => {
     }
   });
 
-  app.delete(RESOURCE_WITH_ID, checkPathId, async (req, res) => {
+  app.delete(RESOURCE_WITH_ID, checkSpecificationId, async (req, res) => {
     try {
       const _id = req.params.id;
 

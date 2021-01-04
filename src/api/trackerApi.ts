@@ -1,45 +1,64 @@
 import logger from "winston";
 import _ from "lodash";
 
-import { SpecificationTracker, RequirementTracker } from "../db/model/tracker";
-import checkPathId from "../middleware/checkPathId";
+import {
+  CONFIDENCE_NOT_COVERED,
+  Confidence,
+  IRequirementTracker,
+  ISectionSummary,
+  IByConfidenceCount,
+  ConfidenceOptions,
+} from "study-tracker-lib/dist/trackerModel";
+import {
+  SpecificationTracker,
+  RequirementTracker,
+  IRequirementTrackerDoc,
+} from "../db/model/tracker";
+import generateCheckPathId from "../middleware/checkPathId";
 import { RestApi } from "./types";
 import { Request, RequestHandler } from "express";
 import { Specification } from "../db/model/specification";
 
 const RESOURCE_URL = "/tracker";
-const RESOURCE_WITH_SPECIFICATION_ID = `${RESOURCE_URL}/:id`;
-const RESOURCE_WITH_COMPONENT_ID = `${RESOURCE_URL}/:id/:componentId`;
-const RESOURCE_WITH_SECTION_ID = `${RESOURCE_URL}/:id/:componentId/:sectionId`;
-const RESOURCE_WITH_SUBSECTION_ID = `${RESOURCE_URL}/:id/:componentId/:sectionId/:subsectionId`;
-const RESOURCE_WITH_REQUIREMENT_ID = `${RESOURCE_URL}/:id/:componentId/:sectionId/:subsectionId/:requirementIndex`;
+const RESOURCE_WITH_SPECIFICATION_ID = `${RESOURCE_URL}/:specificationId`;
+const RESOURCE_WITH_COMPONENT_ID = `${RESOURCE_URL}/:specificationId/:componentId`;
+const RESOURCE_WITH_SECTION_ID = `${RESOURCE_URL}/:specificationId/:componentId/:sectionId`;
+const RESOURCE_WITH_SUBSECTION_ID = `${RESOURCE_URL}/:specificationId/:componentId/:sectionId/:subsectionId`;
+const RESOURCE_WITH_REQUIREMENT_ID = `${RESOURCE_URL}/:specificationId/:componentId/:sectionId/:subsectionId/:requirementIndex`;
 
-const SUMMARY_RESOURCE_URL = "/trackerSummary/:id/:sectionId";
+const SUMMARY_RESOURCE_URL =
+  "/trackerSummary/:specificationId/:componentId/:sectionId";
+
+const checkSpecificationId = generateCheckPathId(["specificationId"]);
 
 const api: RestApi = ({ app }) => {
   // Get an overall tracker for a given spec
-  app.get(RESOURCE_WITH_SPECIFICATION_ID, checkPathId, async (req, res) => {
-    try {
-      const { id: specificationId } = req.params;
+  app.get(
+    RESOURCE_WITH_SPECIFICATION_ID,
+    checkSpecificationId,
+    async (req, res) => {
+      try {
+        const { specificationId } = req.params;
 
-      const found = await SpecificationTracker.findOne({ specificationId });
+        const found = await SpecificationTracker.findOne({ specificationId });
 
-      if (!found) {
-        return res.sendStatus(404);
+        if (!found) {
+          return res.sendStatus(404);
+        }
+
+        res.send(found);
+      } catch (err) {
+        logger.error(err);
+        res.status(500);
+        res.send(err);
       }
-
-      res.send(found);
-    } catch (err) {
-      logger.error(err);
-      res.status(500);
-      res.send(err);
     }
-  });
+  );
 
   // Get a summary for a given section
-  app.get(SUMMARY_RESOURCE_URL, checkPathId, async (req, res) => {
+  app.get(SUMMARY_RESOURCE_URL, checkSpecificationId, async (req, res) => {
     try {
-      const { id: specificationId, sectionId } = req.params;
+      const { specificationId, componentId, sectionId } = req.params;
 
       const specification = await Specification.findById(specificationId);
 
@@ -48,10 +67,61 @@ const api: RestApi = ({ app }) => {
         return res.send("Could not find specification");
       }
 
-      const trackers = await RequirementTracker.find({
+      // Get all trackers from the database for this spec, component, section
+      const trackers: IRequirementTracker[] = await RequirementTracker.find({
         specificationId,
+        componentId,
         sectionId,
       });
+
+      let found = false;
+      specification.components
+        .filter((component) => component.id === componentId)
+        .forEach((component) => {
+          component.sections
+            .filter((section) => section.id === sectionId)
+            .forEach((section) => {
+              let requirementTotalCount = 0;
+              let requirementCoveredCount = 0;
+              const byConfidence: IByConfidenceCount = ConfidenceOptions.reduce(
+                (acc, curr) => ({ ...acc, [curr]: 0 }),
+                {}
+              );
+              trackers.forEach((t) => logger.info(JSON.stringify(t)));
+
+              section.subsections.forEach((subsection) => {
+                subsection.requirements.forEach(async (r, requirementIndex) => {
+                  requirementTotalCount++;
+                  const requirementTracker = trackers.find(
+                    (t) =>
+                      t.subsectionId === subsection.id &&
+                      t.requirementIndex === requirementIndex
+                  );
+                  const confidence: Confidence = !!requirementTracker
+                    ? requirementTracker.confidence
+                    : CONFIDENCE_NOT_COVERED;
+
+                  if (confidence !== CONFIDENCE_NOT_COVERED) {
+                    requirementCoveredCount++;
+                  }
+                  byConfidence[confidence]++;
+                });
+              });
+
+              const summary = {
+                percentCovered:
+                  (100 * requirementCoveredCount) / requirementTotalCount,
+                byConfidence,
+              };
+              logger.info("preparing to return " + JSON.stringify(summary));
+              res.send(summary);
+              found = true;
+            });
+        });
+
+      if (!found) {
+        res.sendStatus(404);
+      }
     } catch (err) {
       logger.error(err);
       res.status(500);
@@ -83,9 +153,9 @@ const api: RestApi = ({ app }) => {
   // Get trackers with various levels of specific filtering
   app.get(
     RESOURCE_WITH_COMPONENT_ID,
-    checkPathId,
+    checkSpecificationId,
     getTrackerHandler((req: Request) => {
-      const { id: specificationId, componentId } = req.params;
+      const { specificationId, componentId } = req.params;
 
       const filter = {
         specificationId,
@@ -98,9 +168,9 @@ const api: RestApi = ({ app }) => {
 
   app.get(
     RESOURCE_WITH_SECTION_ID,
-    checkPathId,
+    checkSpecificationId,
     getTrackerHandler((req: Request) => {
-      const { id: specificationId, componentId, sectionId } = req.params;
+      const { specificationId, componentId, sectionId } = req.params;
 
       const filter = {
         specificationId,
@@ -113,10 +183,10 @@ const api: RestApi = ({ app }) => {
   );
   app.get(
     RESOURCE_WITH_SUBSECTION_ID,
-    checkPathId,
+    checkSpecificationId,
     getTrackerHandler((req: Request) => {
       const {
-        id: specificationId,
+        specificationId,
         componentId,
         sectionId,
         subsectionId,
@@ -134,10 +204,10 @@ const api: RestApi = ({ app }) => {
   );
   app.get(
     RESOURCE_WITH_REQUIREMENT_ID,
-    checkPathId,
+    checkSpecificationId,
     getTrackerHandler((req: Request) => {
       const {
-        id: specificationId,
+        specificationId,
         componentId,
         sectionId,
         subsectionId,
@@ -157,37 +227,67 @@ const api: RestApi = ({ app }) => {
   );
 
   // Create a tracker, for a spec
-  app.post(RESOURCE_WITH_SPECIFICATION_ID, checkPathId, async (req, res) => {
-    try {
-      const specificationId = req.params.id;
+  app.post(
+    RESOURCE_WITH_SPECIFICATION_ID,
+    checkSpecificationId,
+    async (req, res) => {
+      try {
+        const specificationId = req.params.id;
 
-      logger.info(`Posting new Tracker for Spec ${specificationId}`);
+        logger.info(`Posting new Tracker for Spec ${specificationId}`);
 
-      const created = await SpecificationTracker.create({
-        specificationId,
-      });
-      res.send(created);
-    } catch (err) {
-      logger.error(err);
-      res.status(500);
-      res.send(err);
+        const created = await SpecificationTracker.create({
+          specificationId,
+        });
+        res.send(created);
+      } catch (err) {
+        logger.error(err);
+        res.status(500);
+        res.send(err);
+      }
     }
-  });
+  );
 
   // Register a confidence level
-  app.put(RESOURCE_WITH_REQUIREMENT_ID, checkPathId, async (req, res) => {
-    try {
-      const {
-        id: specificationId,
-        componentId,
-        sectionId,
-        subsectionId,
-        requirementIndex,
-      } = req.params;
-      const { confidence } = _.pick(req.body, ["confidence"]);
+  app.put(
+    RESOURCE_WITH_REQUIREMENT_ID,
+    checkSpecificationId,
+    async (req, res) => {
+      try {
+        const {
+          specificationId,
+          componentId,
+          sectionId,
+          subsectionId,
+          requirementIndex: requirementIndexStr,
+        } = req.params;
+        const { confidence } = _.pick(req.body, ["confidence"]);
 
-      logger.info(
-        `Updating tracker  ${JSON.stringify(
+        const requirementIndex = parseInt(requirementIndexStr, 10);
+
+        logger.info(
+          `Updating tracker  ${JSON.stringify(
+            {
+              specificationId,
+              componentId,
+              sectionId,
+              subsectionId,
+              requirementIndex,
+              confidence,
+            },
+            null,
+            2
+          )}`
+        );
+
+        const updated = await RequirementTracker.findOneAndUpdate(
+          {
+            specificationId,
+            componentId,
+            sectionId,
+            subsectionId,
+            requirementIndex,
+          },
           {
             specificationId,
             componentId,
@@ -196,66 +296,54 @@ const api: RestApi = ({ app }) => {
             requirementIndex,
             confidence,
           },
-          null,
-          2
-        )}`
-      );
+          { upsert: true, new: true }
+        );
 
-      const updated = await RequirementTracker.findOneAndUpdate(
-        {
-          specificationId,
-          componentId,
-          sectionId,
-          subsectionId,
-          requirementIndex: parseInt(requirementIndex, 10),
-        },
-        {
-          specificationId,
-          componentId,
-          sectionId,
-          subsectionId,
-          requirementIndex: parseInt(requirementIndex, 10),
-          confidence: parseInt(confidence, 10),
-        },
-        { upsert: true }
-      );
+        if (!updated) {
+          res.status(404);
+          return res.send({ message: "Nothing updated" });
+        }
 
-      if (!updated) {
-        return res.sendStatus(404);
+        return res.send({ updated });
+      } catch (err) {
+        logger.error(err);
+        res.status(500);
+        res.send(err);
       }
-
-      return res.send({ updated });
-    } catch (err) {
-      logger.error(err);
-      res.status(500);
-      res.send(err);
     }
-  });
+  );
 
   // Delete a specification tracker and any requirements recorded against it
-  app.delete(RESOURCE_WITH_SPECIFICATION_ID, checkPathId, async (req, res) => {
-    try {
-      const specificationId = req.params.specificationId;
+  app.delete(
+    RESOURCE_WITH_SPECIFICATION_ID,
+    checkSpecificationId,
+    async (req, res) => {
+      try {
+        const specificationId = req.params.specificationId;
 
-      const removedTracker = await SpecificationTracker.deleteOne({
-        specificationId,
-      });
+        const removedTracker = await SpecificationTracker.deleteOne({
+          specificationId,
+        });
 
-      const removedRequirements = await RequirementTracker.deleteMany({
-        specificationId,
-      });
+        const removedRequirements = await RequirementTracker.deleteMany({
+          specificationId,
+        });
 
-      if (!removedTracker) {
-        return res.sendStatus(404);
+        if (!removedTracker) {
+          return res.sendStatus(404);
+        }
+
+        res.send({
+          tracker: removedTracker,
+          requirements: removedRequirements,
+        });
+      } catch (err) {
+        logger.error(err);
+        res.status(500);
+        res.send(err);
       }
-
-      res.send({ tracker: removedTracker, requirements: removedRequirements });
-    } catch (err) {
-      logger.error(err);
-      res.status(500);
-      res.send(err);
     }
-  });
+  );
 };
 
 export default api;
