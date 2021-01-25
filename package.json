@@ -4,7 +4,7 @@
   "description": "Backend for the Study Tracking System",
   "main": "dist/index.js",
   "engines": {
-    "node": "12.16.x"
+    "node": "12.x"
   },
   "scripts": {
     "prebuild": "tslint -c tslint.json -p tsconfig.json --fix",
